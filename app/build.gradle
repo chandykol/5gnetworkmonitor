@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace 'com.example.networkmonitor'
-    compileSdk 36
+    compileSdk 34   // use latest stable SDK
 
     defaultConfig {
         applicationId "com.example.networkmonitor"
         minSdk 29
-        targetSdk 34
+        targetSdk 34  // match compileSdk
         versionCode 1
         versionName "1.0"
         multiDexEnabled true
@@ -46,6 +46,3 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.10.0"
     implementation "androidx.activity:activity-ktx:1.12.1"
 }
-
-
-
