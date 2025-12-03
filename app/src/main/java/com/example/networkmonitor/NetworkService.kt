@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.IBinder
 import android.telephony.TelephonyCallback
@@ -31,9 +32,18 @@ class NetworkService : Service() {
             .build()
         startForeground(1, notification)
 
-        telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-        callback = NetworkCallback { type -> onNetworkTypeChanged(type) }
-        telephonyManager.registerTelephonyCallback(mainExecutor, callback)
+        try {
+            telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            callback = NetworkCallback { type -> onNetworkTypeChanged(type) }
+            telephonyManager.registerTelephonyCallback(mainExecutor, callback)
+            Log.d(TAG, "TelephonyCallback registered successfully")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Permission denied for TelephonyCallback", e)
+            stopSelf()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error registering TelephonyCallback", e)
+            stopSelf()
+        }
     }
 
     private fun onNetworkTypeChanged(type: String) {
@@ -50,17 +60,76 @@ class NetworkService : Service() {
 
     private fun playToneForType(type: String) {
         try {
+            // Release previous MediaPlayer
             mp?.release()
+            mp = null
+            
             val prefs = getSharedPreferences("tones", MODE_PRIVATE)
             val uriString = prefs.getString(type, null)
-            val uri = if (uriString != null) Uri.parse(uriString) else null
-
-            if (uri != null) {
-                mp = MediaPlayer.create(this, uri)
+            var uri: Uri? = null
+            
+            // Try to parse the saved URI
+            if (!uriString.isNullOrEmpty()) {
+                try {
+                    uri = Uri.parse(uriString)
+                    Log.d(TAG, "Using saved sound for $type: $uriString")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error parsing URI for $type: $uriString", e)
+                    uri = null
+                }
+            }
+            
+            // If no valid URI, use default notification sound
+            if (uri == null) {
+                uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                Log.d(TAG, "Using default notification sound for $type")
+            }
+            
+            // Create and play MediaPlayer
+            mp = MediaPlayer.create(this, uri)
+            if (mp != null) {
+                mp?.setOnErrorListener { _, what, extra ->
+                    Log.e(TAG, "MediaPlayer error: what=$what, extra=$extra")
+                    mp?.release()
+                    mp = null
+                    // Try default sound if custom sound fails
+                    if (uriString != null && uri != RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)) {
+                        Log.d(TAG, "Retrying with default sound")
+                        try {
+                            val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                            mp = MediaPlayer.create(this, defaultUri)
+                            mp?.start()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to play default sound", e)
+                        }
+                    }
+                    true
+                }
+                mp?.setOnCompletionListener {
+                    it.release()
+                    mp = null
+                }
+                mp?.start()
+                Log.d(TAG, "Playing sound for $type")
+            } else {
+                Log.e(TAG, "Failed to create MediaPlayer for $type, trying default sound")
+                // Fallback to default sound
+                val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                mp = MediaPlayer.create(this, defaultUri)
                 mp?.start()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error playing tone", e)
+            Log.e(TAG, "Error playing tone for $type", e)
+            mp?.release()
+            mp = null
+            // Last resort: try default sound
+            try {
+                val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                mp = MediaPlayer.create(this, defaultUri)
+                mp?.start()
+            } catch (ex: Exception) {
+                Log.e(TAG, "Failed to play default sound as fallback", ex)
+            }
         }
     }
 
