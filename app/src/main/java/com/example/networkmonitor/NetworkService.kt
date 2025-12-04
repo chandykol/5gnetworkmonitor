@@ -73,6 +73,14 @@ class NetworkService : Service() {
             
             isCallbackRegistered = true
             Log.d(TAG, "TelephonyCallback registered successfully")
+            
+            // Log initial network state for debugging
+            try {
+                val currentNetworkType = telephonyManager?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+                Log.d(TAG, "Initial network type: $currentNetworkType")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not get initial network type", e)
+            }
         } catch (e: SecurityException) {
             Log.e(TAG, "Permission denied for TelephonyCallback", e)
             stopSelf()

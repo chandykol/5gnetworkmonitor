@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
                 var uri: Uri? = null
                 
                 if (data != null) {
-                    // Method 1: Standard way
+                    // Method 1: Standard way - get from EXTRA_RINGTONE_PICKED_URI
                     uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
                     } else {
@@ -52,10 +52,29 @@ class MainActivity : AppCompatActivity() {
                         data.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
                     }
                     
+                    Log.d(TAG, "Method 1 - Got URI from EXTRA_RINGTONE_PICKED_URI: $uri")
+                    
                     // Method 2: Try getting from data URI directly
                     if (uri == null && data.data != null) {
                         uri = data.data
-                        Log.d(TAG, "Got URI from data.data: $uri")
+                        Log.d(TAG, "Method 2 - Got URI from data.data: $uri")
+                    }
+                    
+                    // Method 3: Try getting all extras to see what's available
+                    if (uri == null) {
+                        val extras = data.extras
+                        if (extras != null) {
+                            Log.d(TAG, "Method 3 - Checking all extras: ${extras.keySet()}")
+                            for (key in extras.keySet()) {
+                                val value = extras.get(key)
+                                Log.d(TAG, "Extra key: $key, value: $value, type: ${value?.javaClass?.name}")
+                                if (value is Uri) {
+                                    uri = value
+                                    Log.d(TAG, "Found URI in extras with key: $key")
+                                    break
+                                }
+                            }
+                        }
                     }
                 }
                 
@@ -163,17 +182,43 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnStop.setOnClickListener {
             stopService(Intent(this, NetworkService::class.java))
+            Toast.makeText(this, "Monitoring stopped", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnBattery.setOnClickListener {
             requestBatteryExemption()
         }
+        
+        // Test: Click on logo to see saved sounds
+        binding.imgAppLogo.setOnClickListener {
+            val prefs = getSharedPreferences("tones", MODE_PRIVATE)
+            val sound5G = prefs.getString("5G", null)
+            val sound4G = prefs.getString("4G", null)
+            val message = "5G: ${if (sound5G != null) "Saved ✓" else "Not saved"}\n4G: ${if (sound4G != null) "Saved ✓" else "Not saved"}"
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            Log.d(TAG, "Current saved sounds - 5G: $sound5G, 4G: $sound4G")
+        }
     }
 
     private fun openRingtonePicker() {
-        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
-        intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
-        pickRingtoneLauncher.launch(intent)
+        try {
+            // Get currently saved ringtone to pre-select it
+            val prefs = getSharedPreferences("tones", MODE_PRIVATE)
+            val savedUriString = prefs.getString(currentType, null)
+            val savedUri = if (savedUriString != null) Uri.parse(savedUriString) else null
+            
+            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+            if (savedUri != null) {
+                intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, savedUri)
+            }
+            pickRingtoneLauncher.launch(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening ringtone picker", e)
+            Toast.makeText(this, "Error opening ringtone picker: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun requestBatteryExemption() {
