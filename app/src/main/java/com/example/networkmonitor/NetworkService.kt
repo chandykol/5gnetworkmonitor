@@ -6,56 +6,107 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
 import android.os.IBinder
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 
 class NetworkService : Service() {
 
-    private lateinit var telephonyManager: TelephonyManager
-    private lateinit var callback: NetworkCallback
+    private var telephonyManager: TelephonyManager? = null
+    private var callback: NetworkCallback? = null
+    private var registeredListener: TelephonyCallback? = null
     private var lastType: String? = null
     private var mp: MediaPlayer? = null
     private val TAG = "NetworkService"
+    private var isCallbackRegistered = false
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
-        val notification = Notification.Builder(this, "monitor")
-            .setContentTitle("5G Monitor Running")
-            .setContentText("Monitoring network status…")
-            .setSmallIcon(android.R.drawable.ic_popup_sync)
-            .build()
-        startForeground(1, notification)
-
+        Log.d(TAG, "Service onCreate called")
+        
         try {
+            createNotificationChannel()
+            val notification = Notification.Builder(this, "monitor")
+                .setContentTitle("5G Monitor Running")
+                .setContentText("Monitoring network status…")
+                .setSmallIcon(android.R.drawable.ic_popup_sync)
+                .build()
+            startForeground(1, notification)
+            Log.d(TAG, "Foreground notification started")
+
+            // Check permission before registering callback
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_PHONE_STATE) 
+                != PackageManager.PERMISSION_GRANTED) {
+                Log.e(TAG, "READ_PHONE_STATE permission not granted")
+                stopSelf()
+                return
+            }
+
             telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            
+            // Get initial network type
+            try {
+                val currentNetworkType = telephonyManager?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+                lastType = when (currentNetworkType) {
+                    TelephonyManager.NETWORK_TYPE_NR -> "5G"
+                    TelephonyManager.NETWORK_TYPE_LTE -> "4G"
+                    else -> "Other"
+                }
+                Log.d(TAG, "Initial network type: $lastType (networkType=$currentNetworkType)")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not get initial network type", e)
+            }
+            
             callback = NetworkCallback { type -> onNetworkTypeChanged(type) }
-            telephonyManager.registerTelephonyCallback(mainExecutor, callback)
+            
+            // Register appropriate callback based on API level
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Use DisplayInfoListener for better 5G detection (API 30+)
+                val displayListener = callback!!.DisplayInfoListenerImpl()
+                registeredListener = displayListener
+                telephonyManager?.registerTelephonyCallback(mainExecutor, displayListener)
+                Log.d(TAG, "DisplayInfoListener registered (API 30+)")
+            } else {
+                // Fallback to DataConnectionStateListener for older versions
+                val dataListener = callback!!.DataConnectionListenerImpl()
+                registeredListener = dataListener
+                telephonyManager?.registerTelephonyCallback(mainExecutor, dataListener)
+                Log.d(TAG, "DataConnectionStateListener registered (API 29)")
+            }
+            
+            isCallbackRegistered = true
             Log.d(TAG, "TelephonyCallback registered successfully")
         } catch (e: SecurityException) {
             Log.e(TAG, "Permission denied for TelephonyCallback", e)
             stopSelf()
         } catch (e: Exception) {
             Log.e(TAG, "Error registering TelephonyCallback", e)
+            e.printStackTrace()
             stopSelf()
         }
     }
 
     private fun onNetworkTypeChanged(type: String) {
         Log.d(TAG, "Network changed: $type (last=$lastType)")
-        if (type == lastType) return
-
-        if (type == "5G") {
-            playToneForType("5G")
-        } else if (type == "4G" && lastType == "5G") {
-            playToneForType("4G")
+        
+        // Only process 4G and 5G changes, ignore "Other"
+        if (type != "4G" && type != "5G") {
+            Log.d(TAG, "Ignoring network type: $type")
+            return
         }
-        lastType = type
+        
+        // Play sound when switching between 4G and 5G
+        if (type != lastType && (type == "5G" || type == "4G")) {
+            playToneForType(type)
+            lastType = type
+        }
     }
 
     private fun playToneForType(type: String) {
@@ -141,11 +192,25 @@ class NetworkService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "Service onStartCommand called")
+        // Return START_STICKY to ensure service restarts if killed
+        return START_STICKY
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "Service onDestroy called")
         try {
-            telephonyManager.unregisterTelephonyCallback(callback)
-        } catch (ignored: Exception) {}
+            if (isCallbackRegistered && registeredListener != null && telephonyManager != null) {
+                telephonyManager?.unregisterTelephonyCallback(registeredListener!!)
+                isCallbackRegistered = false
+                registeredListener = null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering callback", e)
+        }
         mp?.release()
+        mp = null
     }
 }

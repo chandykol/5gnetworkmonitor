@@ -45,27 +45,31 @@ class MainActivity : AppCompatActivity() {
                     data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
                 }
                 
-                if (uri != null) {
+                if (uri != null && uri.toString().isNotEmpty()) {
                     val prefs = getSharedPreferences("tones", MODE_PRIVATE)
-                    val success = prefs.edit()
-                        .putString(currentType, uri.toString())
-                        .commit() // Use commit() for immediate save
+                    val editor = prefs.edit()
+                    editor.putString(currentType, uri.toString())
+                    val success = editor.commit() // Use commit() for immediate save
                     
-                    if (success) {
-                        Log.d(TAG, "Sound saved for $currentType: $uri")
+                    // Verify the save worked by reading it back
+                    val savedUri = prefs.getString(currentType, null)
+                    if (success && savedUri == uri.toString()) {
+                        Log.d(TAG, "Sound saved and verified for $currentType: $uri")
                         Toast.makeText(this, "Sound saved for $currentType", Toast.LENGTH_SHORT).show()
                     } else {
-                        Log.e(TAG, "Failed to save sound for $currentType")
-                        Toast.makeText(this, "Failed to save sound", Toast.LENGTH_SHORT).show()
+                        Log.e(TAG, "Failed to save sound for $currentType. Saved: $savedUri, Expected: $uri")
+                        Toast.makeText(this, "Failed to save sound. Please try again.", Toast.LENGTH_LONG).show()
                     }
                 } else {
-                    Log.w(TAG, "No sound selected")
+                    Log.w(TAG, "No sound selected or URI is null/empty")
                     Toast.makeText(this, "No sound selected", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving sound", e)
                 Toast.makeText(this, "Error saving sound: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+        } else {
+            Log.d(TAG, "Ringtone picker cancelled")
         }
     }
 
@@ -124,10 +128,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestBatteryExemption() {
-        // Guide user to ignore battery optimizations for this app
-        val intent = Intent()
-        intent.action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-        intent.data = Uri.parse("package:$packageName")
-        startActivity(intent)
+        try {
+            // Guide user to ignore battery optimizations for this app
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            intent.data = Uri.parse("package:$packageName")
+            
+            // Check if the intent can be resolved
+            if (intent.resolveActivity(packageManager) != null) {
+                startActivity(intent)
+                Toast.makeText(this, "Please allow battery optimization exemption", Toast.LENGTH_LONG).show()
+            } else {
+                // Fallback: Open battery optimization settings
+                val batteryIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                if (batteryIntent.resolveActivity(packageManager) != null) {
+                    startActivity(batteryIntent)
+                    Toast.makeText(this, "Please find and exempt this app from battery optimization", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Please manually disable battery optimization for this app in Settings", Toast.LENGTH_LONG).show()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening battery exemption settings", e)
+            Toast.makeText(this, "Error: ${e.message}. Please manually disable battery optimization in Settings.", Toast.LENGTH_LONG).show()
+        }
     }
 }
