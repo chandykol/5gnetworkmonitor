@@ -38,38 +38,84 @@ class MainActivity : AppCompatActivity() {
         if (result.resultCode == Activity.RESULT_OK) {
             try {
                 val data = result.data
-                val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+                Log.d(TAG, "Ringtone picker result data: $data")
+                
+                // Try multiple ways to get the URI (different Android versions handle this differently)
+                var uri: Uri? = null
+                
+                if (data != null) {
+                    // Method 1: Standard way
+                    uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        data.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+                    }
+                    
+                    // Method 2: Try getting from data URI directly
+                    if (uri == null && data.data != null) {
+                        uri = data.data
+                        Log.d(TAG, "Got URI from data.data: $uri")
+                    }
                 }
                 
-                if (uri != null && uri.toString().isNotEmpty()) {
+                Log.d(TAG, "Selected URI for $currentType: $uri")
+                
+                if (uri != null && uri.toString().isNotEmpty() && uri.toString() != "null") {
+                    val uriString = uri.toString()
                     val prefs = getSharedPreferences("tones", MODE_PRIVATE)
+                    
+                    // Save the URI
                     val editor = prefs.edit()
-                    editor.putString(currentType, uri.toString())
+                    editor.putString(currentType, uriString)
                     val success = editor.commit() // Use commit() for immediate save
                     
-                    // Verify the save worked by reading it back
+                    Log.d(TAG, "Save attempt - Success: $success, URI: $uriString")
+                    
+                    // Verify the save worked by reading it back immediately
                     val savedUri = prefs.getString(currentType, null)
-                    if (success && savedUri == uri.toString()) {
-                        Log.d(TAG, "Sound saved and verified for $currentType: $uri")
+                    Log.d(TAG, "Verification - Saved URI: $savedUri, Expected: $uriString")
+                    
+                    if (success && savedUri == uriString) {
+                        Log.d(TAG, "Sound saved and verified for $currentType: $uriString")
                         Toast.makeText(this, "Sound saved for $currentType", Toast.LENGTH_SHORT).show()
+                        displaySavedRingtones()
                     } else {
-                        Log.e(TAG, "Failed to save sound for $currentType. Saved: $savedUri, Expected: $uri")
-                        Toast.makeText(this, "Failed to save sound. Please try again.", Toast.LENGTH_LONG).show()
+                        Log.e(TAG, "Failed to save sound for $currentType. Success: $success, Saved: $savedUri, Expected: $uriString")
+                        Toast.makeText(this, "Failed to save sound. Saved: ${savedUri?.take(50)}...", Toast.LENGTH_LONG).show()
                     }
                 } else {
-                    Log.w(TAG, "No sound selected or URI is null/empty")
-                    Toast.makeText(this, "No sound selected", Toast.LENGTH_SHORT).show()
+                    Log.w(TAG, "No sound selected or URI is null/empty. URI: $uri")
+                    Toast.makeText(this, "No sound selected. Please try again.", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving sound", e)
-                Toast.makeText(this, "Error saving sound: ${e.message}", Toast.LENGTH_SHORT).show()
+                e.printStackTrace()
+                Toast.makeText(this, "Error saving sound: ${e.message}", Toast.LENGTH_LONG).show()
             }
         } else {
-            Log.d(TAG, "Ringtone picker cancelled")
+            Log.d(TAG, "Ringtone picker cancelled or failed. Result code: ${result.resultCode}")
+        }
+    }
+    
+    private fun displaySavedRingtones() {
+        val prefs = getSharedPreferences("tones", MODE_PRIVATE)
+        val sound5G = prefs.getString("5G", null)
+        val sound4G = prefs.getString("4G", null)
+        
+        Log.d(TAG, "Current saved sounds - 5G: $sound5G, 4G: $sound4G")
+        
+        // Update button text to show if sound is saved
+        binding.btnSelect5g.text = if (sound5G != null) {
+            "Select 5G Alert Sound (✓ Saved)"
+        } else {
+            "Select 5G Alert Sound"
+        }
+        
+        binding.btnSelect4g.text = if (sound4G != null) {
+            "Select 4G Alert Sound (✓ Saved)"
+        } else {
+            "Select 4G Alert Sound"
         }
     }
 
@@ -83,6 +129,9 @@ class MainActivity : AppCompatActivity() {
             != PackageManager.PERMISSION_GRANTED) {
             permissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
         }
+
+        // Display currently saved ringtones
+        displaySavedRingtones()
 
         binding.btnSelect5g.setOnClickListener {
             currentType = "5G"
