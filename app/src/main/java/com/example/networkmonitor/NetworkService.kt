@@ -21,7 +21,7 @@ class NetworkService : Service() {
 
     private var telephonyManager: TelephonyManager? = null
     private var callback: NetworkCallback? = null
-    private var registeredListener: TelephonyCallback.DataConnectionStateListener? = null
+    private var registeredListener: TelephonyCallback? = null
     private var lastType: String? = null
     private var mp: MediaPlayer? = null
     private val TAG = "NetworkService"
@@ -67,8 +67,8 @@ class NetworkService : Service() {
             callback = NetworkCallback { type -> onNetworkTypeChanged(type) }
             
             // Register DataConnectionStateListener - works on all API levels
-            val dataListener: TelephonyCallback.DataConnectionStateListener = callback!!.DataConnectionListenerImpl()
-            registeredListener = dataListener
+            val dataListener = callback!!.DataConnectionListenerImpl()
+            registeredListener = dataListener as TelephonyCallback
             telephonyManager?.registerTelephonyCallback(mainExecutor, dataListener)
             
             isCallbackRegistered = true
