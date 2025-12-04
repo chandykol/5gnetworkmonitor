@@ -69,6 +69,7 @@ class MainActivity : AppCompatActivity() {
                         if (extras != null) {
                             Log.d(TAG, "Method 3 - Checking all extras: ${extras.keySet()}")
                             for (key in extras.keySet()) {
+                                @Suppress("DEPRECATION")
                                 val value = extras.get(key)
                                 Log.d(TAG, "Extra key: $key, value: $value, type: ${value?.javaClass?.name}")
                                 if (value is Uri) {

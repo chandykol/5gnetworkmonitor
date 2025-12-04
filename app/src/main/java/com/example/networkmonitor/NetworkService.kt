@@ -26,6 +26,8 @@ class NetworkService : Service() {
     private var mp: MediaPlayer? = null
     private val TAG = "NetworkService"
     private var isCallbackRegistered = false
+    private var networkCheckHandler: android.os.Handler? = null
+    private var networkCheckRunnable: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -73,6 +75,9 @@ class NetworkService : Service() {
             
             isCallbackRegistered = true
             Log.d(TAG, "TelephonyCallback registered successfully")
+            
+            // Start periodic network type checking (DataConnectionStateListener doesn't fire on type changes)
+            startPeriodicNetworkCheck()
             
             // Log initial network state for debugging
             try {
@@ -248,9 +253,69 @@ class NetworkService : Service() {
         return START_STICKY
     }
 
+    private fun startPeriodicNetworkCheck() {
+        networkCheckHandler = android.os.Handler(mainLooper)
+        networkCheckRunnable = object : Runnable {
+            override fun run() {
+                try {
+                    val currentNetworkType = telephonyManager?.dataNetworkType ?: TelephonyManager.NETWORK_TYPE_UNKNOWN
+                    val currentType = when (currentNetworkType) {
+                        TelephonyManager.NETWORK_TYPE_NR -> "5G"
+                        TelephonyManager.NETWORK_TYPE_LTE -> "4G"
+                        else -> "Other"
+                    }
+                    
+                    // Only check for 4G and 5G, ignore other types
+                    if (currentType == "4G" || currentType == "5G") {
+                        // Check if network type changed
+                        if (currentType != lastType) {
+                            Log.d(TAG, "Periodic check detected network change: $lastType -> $currentType")
+                            // Update lastType before calling to prevent duplicate triggers
+                            val previousType = lastType
+                            lastType = currentType
+                            playToneForType(currentType)
+                            
+                            // Update notification
+                            try {
+                                val notification = Notification.Builder(this@NetworkService, "monitor")
+                                    .setContentTitle("5G Monitor Running")
+                                    .setContentText("Current Network: $currentType")
+                                    .setSmallIcon(android.R.drawable.ic_popup_sync)
+                                    .build()
+                                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                                nm.notify(1, notification)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error updating notification", e)
+                            }
+                        }
+                    }
+                    
+                    // Schedule next check (every 10 seconds)
+                    networkCheckHandler?.postDelayed(this, 10000)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in periodic network check", e)
+                    // Retry after error
+                    networkCheckHandler?.postDelayed(this, 10000)
+                }
+            }
+        }
+        networkCheckHandler?.post(networkCheckRunnable!!)
+        Log.d(TAG, "Started periodic network type checking (every 10 seconds)")
+    }
+    
+    private fun stopPeriodicNetworkCheck() {
+        networkCheckRunnable?.let {
+            networkCheckHandler?.removeCallbacks(it)
+        }
+        networkCheckRunnable = null
+        networkCheckHandler = null
+        Log.d(TAG, "Stopped periodic network type checking")
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "Service onDestroy called")
+        stopPeriodicNetworkCheck()
         try {
             if (isCallbackRegistered && registeredListener != null && telephonyManager != null) {
                 telephonyManager?.unregisterTelephonyCallback(registeredListener!!)
