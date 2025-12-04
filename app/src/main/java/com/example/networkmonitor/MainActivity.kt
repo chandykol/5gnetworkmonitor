@@ -129,16 +129,16 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "Current saved sounds - 5G: $sound5G, 4G: $sound4G")
         
         // Update button text to show if sound is saved
-        binding.btnSelect5g.text = if (sound5G != null) {
-            "Select 5G Alert Sound (✓ Saved)"
+        binding.btn5GAlert.text = if (sound5G != null) {
+            "5G\nAlert\n✓"
         } else {
-            "Select 5G Alert Sound"
+            "5G\nAlert"
         }
         
-        binding.btnSelect4g.text = if (sound4G != null) {
-            "Select 4G Alert Sound (✓ Saved)"
+        binding.btn4GAlert.text = if (sound4G != null) {
+            "4G\nAlert\n✓"
         } else {
-            "Select 4G Alert Sound"
+            "4G\nAlert"
         }
     }
 
@@ -156,12 +156,12 @@ class MainActivity : AppCompatActivity() {
         // Display currently saved ringtones
         displaySavedRingtones()
 
-        binding.btnSelect5g.setOnClickListener {
+        binding.btn5GAlert.setOnClickListener {
             currentType = "5G"
             openRingtonePicker()
         }
 
-        binding.btnSelect4g.setOnClickListener {
+        binding.btn4GAlert.setOnClickListener {
             currentType = "4G"
             openRingtonePicker()
         }
@@ -196,12 +196,12 @@ class MainActivity : AppCompatActivity() {
             requestBatteryExemption()
         }
         
-        // Test: Click on logo to see saved sounds and test playback
+        // Click on logo/image to see saved sounds status
         binding.imgAppLogo.setOnClickListener {
             val prefs = getSharedPreferences("tones", MODE_PRIVATE)
             val sound5G = prefs.getString("5G", null)
             val sound4G = prefs.getString("4G", null)
-            val message = "5G: ${if (sound5G != null) "Saved ✓" else "Not saved"}\n4G: ${if (sound4G != null) "Saved ✓" else "Not saved"}\n\nTap Start to test sound"
+            val message = "5G Alert: ${if (sound5G != null) "Saved ✓" else "Not saved"}\n4G Alert: ${if (sound4G != null) "Saved ✓" else "Not saved"}\n\nTap Start to test sound"
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
             Log.d(TAG, "Current saved sounds - 5G: $sound5G, 4G: $sound4G")
         }
