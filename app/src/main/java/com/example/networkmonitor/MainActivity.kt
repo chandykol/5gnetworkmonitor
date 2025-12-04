@@ -8,6 +8,8 @@ import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
@@ -171,13 +173,16 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             
+            // Test sound playback before starting service
+            testSoundPlayback()
+            
             val intent = Intent(this, NetworkService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ContextCompat.startForegroundService(this, intent)
             } else {
                 startService(intent)
             }
-            Toast.makeText(this, "Monitoring started", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Monitoring started. Check notification for network status.", Toast.LENGTH_LONG).show()
         }
 
         binding.btnStop.setOnClickListener {
@@ -189,14 +194,46 @@ class MainActivity : AppCompatActivity() {
             requestBatteryExemption()
         }
         
-        // Test: Click on logo to see saved sounds
+        // Test: Click on logo to see saved sounds and test playback
         binding.imgAppLogo.setOnClickListener {
             val prefs = getSharedPreferences("tones", MODE_PRIVATE)
             val sound5G = prefs.getString("5G", null)
             val sound4G = prefs.getString("4G", null)
-            val message = "5G: ${if (sound5G != null) "Saved ✓" else "Not saved"}\n4G: ${if (sound4G != null) "Saved ✓" else "Not saved"}"
+            val message = "5G: ${if (sound5G != null) "Saved ✓" else "Not saved"}\n4G: ${if (sound4G != null) "Saved ✓" else "Not saved"}\n\nTap Start to test sound"
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
             Log.d(TAG, "Current saved sounds - 5G: $sound5G, 4G: $sound4G")
+        }
+    }
+    
+    private fun testSoundPlayback() {
+        try {
+            val prefs = getSharedPreferences("tones", MODE_PRIVATE)
+            val testUri = prefs.getString("5G", null) ?: prefs.getString("4G", null)
+            
+            if (testUri != null) {
+                val uri = Uri.parse(testUri)
+                val ringtone = RingtoneManager.getRingtone(this, uri)
+                if (ringtone != null) {
+                    ringtone.play()
+                    Toast.makeText(this, "Testing sound playback...", Toast.LENGTH_SHORT).show()
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        ringtone.stop()
+                    }, 2000)
+                } else {
+                    Log.w(TAG, "Could not create ringtone from saved URI: $testUri")
+                }
+            } else {
+                // Test default sound
+                val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                val ringtone = RingtoneManager.getRingtone(this, defaultUri)
+                ringtone?.play()
+                Toast.makeText(this, "Testing default sound...", Toast.LENGTH_SHORT).show()
+                Handler(Looper.getMainLooper()).postDelayed({
+                    ringtone?.stop()
+                }, 2000)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error testing sound playback", e)
         }
     }
 
