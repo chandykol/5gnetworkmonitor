@@ -20,8 +20,7 @@ import androidx.core.content.ContextCompat
 class NetworkService : Service() {
 
     private var telephonyManager: TelephonyManager? = null
-    private var callback: NetworkCallback? = null
-    private var registeredListener: TelephonyCallback.DataConnectionStateListener? = null
+    private var telephonyCallback: NetworkTypeCallback? = null
     private var lastType: String? = null
     private var mp: MediaPlayer? = null
     private val TAG = "NetworkService"
@@ -66,26 +65,26 @@ class NetworkService : Service() {
                 Log.w(TAG, "Could not get initial network type", e)
             }
             
-            // Start periodic network type checking first (this is the main detection method)
-            startPeriodicNetworkCheck()
+            // Register TelephonyCallback (proper implementation)
+            telephonyCallback = NetworkTypeCallback { type ->
+                onNetworkTypeChanged(type)
+            }
             
-            // Try to register callback (optional - periodic check will work without it)
             try {
-                callback = NetworkCallback { type -> onNetworkTypeChanged(type) }
-                val dataListener = callback!!.DataConnectionListenerImpl()
-                registeredListener = dataListener
-                telephonyManager?.registerTelephonyCallback(mainExecutor, dataListener)
+                telephonyManager?.registerTelephonyCallback(
+                    mainExecutor,
+                    telephonyCallback!!
+                )
                 isCallbackRegistered = true
                 Log.d(TAG, "TelephonyCallback registered successfully")
-            } catch (e: ClassCastException) {
-                Log.w(TAG, "ClassCastException registering callback - periodic check will handle network detection", e)
-                isCallbackRegistered = false
-                // Periodic check is already running, so we're good
             } catch (e: Exception) {
-                Log.w(TAG, "Error registering TelephonyCallback - periodic check will handle network detection", e)
+                Log.e(TAG, "Error registering TelephonyCallback", e)
+                e.printStackTrace()
                 isCallbackRegistered = false
-                // Periodic check is already running, so we're good
             }
+            
+            // Start periodic network type checking (backup method - works even if callback fails)
+            startPeriodicNetworkCheck()
             
             // Log initial network state for debugging
             try {
@@ -331,13 +330,14 @@ class NetworkService : Service() {
         Log.d(TAG, "Service onDestroy called")
         stopPeriodicNetworkCheck()
         try {
-            if (isCallbackRegistered && registeredListener != null && telephonyManager != null) {
-                telephonyManager?.unregisterTelephonyCallback(registeredListener as TelephonyCallback)
-                isCallbackRegistered = false
-                registeredListener = null
+            telephonyCallback?.let {
+                telephonyManager?.unregisterTelephonyCallback(it)
+                Log.d(TAG, "TelephonyCallback unregistered")
             }
+            isCallbackRegistered = false
+            telephonyCallback = null
         } catch (e: Exception) {
-            Log.e(TAG, "Error unregistering callback", e)
+            Log.e(TAG, "Error unregistering TelephonyCallback", e)
         }
         mp?.release()
         mp = null
