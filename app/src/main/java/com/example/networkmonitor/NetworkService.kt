@@ -21,7 +21,7 @@ class NetworkService : Service() {
 
     private var telephonyManager: TelephonyManager? = null
     private var callback: NetworkCallback? = null
-    private var registeredListener: TelephonyCallback? = null
+    private var registeredListener: TelephonyCallback.DataConnectionStateListener? = null
     private var lastType: String? = null
     private var mp: MediaPlayer? = null
     private val TAG = "NetworkService"
@@ -66,20 +66,10 @@ class NetworkService : Service() {
             
             callback = NetworkCallback { type -> onNetworkTypeChanged(type) }
             
-            // Register appropriate callback based on API level
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Use DisplayInfoListener for better 5G detection (API 30+)
-                val displayListener = callback!!.DisplayInfoListenerImpl()
-                registeredListener = displayListener
-                telephonyManager?.registerTelephonyCallback(mainExecutor, displayListener)
-                Log.d(TAG, "DisplayInfoListener registered (API 30+)")
-            } else {
-                // Fallback to DataConnectionStateListener for older versions
-                val dataListener = callback!!.DataConnectionListenerImpl()
-                registeredListener = dataListener
-                telephonyManager?.registerTelephonyCallback(mainExecutor, dataListener)
-                Log.d(TAG, "DataConnectionStateListener registered (API 29)")
-            }
+            // Register DataConnectionStateListener - works on all API levels
+            val dataListener: TelephonyCallback.DataConnectionStateListener = callback!!.DataConnectionListenerImpl()
+            registeredListener = dataListener
+            telephonyManager?.registerTelephonyCallback(mainExecutor, dataListener)
             
             isCallbackRegistered = true
             Log.d(TAG, "TelephonyCallback registered successfully")
