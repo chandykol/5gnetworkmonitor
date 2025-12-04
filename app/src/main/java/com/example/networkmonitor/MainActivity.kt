@@ -2,6 +2,7 @@ package com.example.networkmonitor
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.RingtoneManager
@@ -260,6 +261,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestBatteryExemption() {
         try {
+            // Check if already exempted
+            val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val isIgnoringBatteryOptimizations = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                powerManager.isIgnoringBatteryOptimizations(packageName)
+            } else {
+                true // Pre-Marshmallow, no battery optimization
+            }
+            
+            if (isIgnoringBatteryOptimizations) {
+                Toast.makeText(this, "✓ Battery optimization is already disabled for this app", Toast.LENGTH_LONG).show()
+                return
+            }
+            
             // Guide user to ignore battery optimizations for this app
             val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
             intent.data = Uri.parse("package:$packageName")
@@ -267,20 +281,49 @@ class MainActivity : AppCompatActivity() {
             // Check if the intent can be resolved
             if (intent.resolveActivity(packageManager) != null) {
                 startActivity(intent)
-                Toast.makeText(this, "Please allow battery optimization exemption", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "A popup will appear. Please tap 'Allow' to disable battery optimization.\n\nThis is required for the app to monitor network changes in the background.", Toast.LENGTH_LONG).show()
             } else {
                 // Fallback: Open battery optimization settings
                 val batteryIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
                 if (batteryIntent.resolveActivity(packageManager) != null) {
                     startActivity(batteryIntent)
-                    Toast.makeText(this, "Please find and exempt this app from battery optimization", Toast.LENGTH_LONG).show()
+                    showBatteryExemptionInstructions()
                 } else {
-                    Toast.makeText(this, "Please manually disable battery optimization for this app in Settings", Toast.LENGTH_LONG).show()
+                    showBatteryExemptionInstructions()
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error opening battery exemption settings", e)
-            Toast.makeText(this, "Error: ${e.message}. Please manually disable battery optimization in Settings.", Toast.LENGTH_LONG).show()
+            showBatteryExemptionInstructions()
         }
+    }
+    
+    private fun showBatteryExemptionInstructions() {
+        val instructions = """
+            To disable battery optimization manually:
+            
+            1. Go to Settings → Apps → 5G Monitor
+            2. Tap on "Battery" or "Power usage"
+            3. Select "Unrestricted" or "Don't optimize"
+            4. Or go to Settings → Battery → Battery optimization
+            5. Find "5G Monitor" and set it to "Don't optimize"
+            
+            This allows the app to monitor network changes in the background.
+        """.trimIndent()
+        
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Battery Optimization Instructions")
+            .setMessage(instructions)
+            .setPositiveButton("Open Settings") { _, _ ->
+                try {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    intent.data = Uri.parse("package:$packageName")
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Please go to Settings manually", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 }
